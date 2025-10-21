@@ -39,17 +39,23 @@ if [ ! -f /proc/device-tree/model ] || ! grep -qi "Raspberry Pi" /proc/device-tr
     fi
 fi
 
-# Check for Bookworm (Debian 12)
+# Check for Bookworm (Debian 12) or newer
 if [ -f /etc/os-release ]; then
     . /etc/os-release
-    if [ "$VERSION_ID" != "12" ]; then
-        echo -e "${YELLOW}WARNING: This script is designed for Debian 12 (Bookworm)${NC}"
-        echo "Detected: $PRETTY_NAME"
+    echo -e "${GREEN}Detected OS:${NC} $PRETTY_NAME (Debian $VERSION_ID)"
+
+    # Check if version is at least Debian 12
+    if [ -n "$VERSION_ID" ] && [ "$VERSION_ID" -lt "12" ]; then
+        echo -e "${YELLOW}WARNING: This script is designed for Debian 12 (Bookworm) or newer${NC}"
+        echo "Your version: $PRETTY_NAME"
+        echo -e "${YELLOW}NetworkManager may not be available on older versions.${NC}"
         read -p "Continue anyway? (y/N) " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
+    elif [ -n "$VERSION_ID" ] && [ "$VERSION_ID" -gt "12" ]; then
+        echo -e "${GREEN}Running Debian $VERSION_ID (newer than Bookworm). This should work fine.${NC}"
     fi
 fi
 
