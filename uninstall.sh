@@ -68,6 +68,15 @@ if systemctl is-active --quiet dnsmasq; then
     systemctl restart dnsmasq 2>/dev/null || true
 fi
 
+# Remove state and lock files
+rm -f /var/run/wifi-checker.state
+rm -f /var/run/wifi-checker-loops.log
+rm -f /var/run/wifi-checker.state.emergency_until
+rmdir /var/lock/wifi-checker.lock 2>/dev/null || true
+
+# Remove log file
+rm -f /var/log/wifi-config.log
+
 echo -e "${GREEN}[5/5] Cleaning up AP connection...${NC}"
 
 # Remove AP connection profile
