@@ -12,6 +12,9 @@ LOG_TAG="wifi-checker"
 CHECK_INTERVAL=60  # seconds between checks (increased for stability)
 LOCK_FILE="/var/lock/wifi-checker.lock"
 STATE_FILE="/var/run/wifi-checker.state"
+LOOP_DETECT_FILE="/var/run/wifi-checker-loops.log"
+MAX_LOOPS=3  # Max state changes in detection window
+LOOP_WINDOW=300  # 5 minutes in seconds
 
 # Function to acquire lock
 acquire_lock() {
@@ -90,11 +93,93 @@ has_internet() {
     ping -c 1 -W 2 1.1.1.1 > /dev/null 2>&1
 }
 
+# Record state transition for loop detection
+record_transition() {
+    local transition="$1"
+    local timestamp=$(date +%s)
+    echo "$timestamp $transition" >> "$LOOP_DETECT_FILE"
+
+    # Clean old entries (older than LOOP_WINDOW)
+    if [ -f "$LOOP_DETECT_FILE" ]; then
+        local cutoff=$((timestamp - LOOP_WINDOW))
+        grep -v "^[0-9]*" "$LOOP_DETECT_FILE" > "${LOOP_DETECT_FILE}.tmp" 2>/dev/null || true
+        awk -v cutoff="$cutoff" '$1 >= cutoff' "$LOOP_DETECT_FILE" >> "${LOOP_DETECT_FILE}.tmp" 2>/dev/null || true
+        mv "${LOOP_DETECT_FILE}.tmp" "$LOOP_DETECT_FILE"
+    fi
+}
+
+# Check if we're in a connection loop
+is_looping() {
+    if [ ! -f "$LOOP_DETECT_FILE" ]; then
+        return 1
+    fi
+
+    # Count transitions in the last LOOP_WINDOW seconds
+    local count=$(wc -l < "$LOOP_DETECT_FILE" 2>/dev/null || echo "0")
+
+    if [ "$count" -ge "$MAX_LOOPS" ]; then
+        return 0  # Yes, we're looping
+    else
+        return 1  # No loop detected
+    fi
+}
+
+# Enter emergency mode (stop making changes)
+enter_emergency_mode() {
+    log_message "EMERGENCY: Connection loop detected! Entering safe mode"
+    log_message "Stopping automatic network switching for 10 minutes"
+
+    # Set a flag to prevent further actions
+    echo "emergency" > "$STATE_FILE"
+    echo "$(date +%s)" > "${STATE_FILE}.emergency_until"
+
+    # Clear loop log
+    rm -f "$LOOP_DETECT_FILE"
+
+    # Make sure AP is active so user can reconfigure
+    if ! is_ap_active; then
+        log_message "Activating AP mode for recovery"
+        bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
+    fi
+}
+
+# Check if we're in emergency mode
+is_emergency_mode() {
+    if [ -f "${STATE_FILE}.emergency_until" ]; then
+        local emergency_until=$(cat "${STATE_FILE}.emergency_until")
+        local now=$(date +%s)
+        local remaining=$((emergency_until + 600 - now))  # 10 minutes = 600 seconds
+
+        if [ "$remaining" -gt 0 ]; then
+            return 0  # Still in emergency mode
+        else
+            # Emergency period expired
+            rm -f "${STATE_FILE}.emergency_until"
+            log_message "Emergency mode expired, resuming normal operation"
+            return 1
+        fi
+    fi
+    return 1
+}
+
 # Main checking logic
 check_and_act() {
+    # Check if we're in emergency mode
+    if is_emergency_mode; then
+        log_message "In emergency mode, skipping checks"
+        return
+    fi
+
     # Acquire lock to prevent race conditions
     if ! acquire_lock; then
         log_message "Could not acquire lock, skipping this check"
+        return
+    fi
+
+    # Check for connection loops
+    if is_looping; then
+        enter_emergency_mode
+        release_lock
         return
     fi
 
@@ -104,6 +189,7 @@ check_and_act() {
         # We're in AP mode - check if user has configured WiFi
         if [ "$current_state" != "ap_mode" ]; then
             set_state "ap_mode"
+            record_transition "enter_ap_mode"
             log_message "Entered AP mode"
         fi
 
@@ -116,8 +202,9 @@ check_and_act() {
         # We're not in AP mode - check if we're connected
         if is_wifi_connected; then
             # Successfully connected to WiFi
-            if [ "$current_state" != "connected" ]; then
+            if [ "$current_state" != "connected" ] && [ "$current_state" != "connected_internet" ]; then
                 set_state "connected"
+                record_transition "wifi_connected"
                 log_message "WiFi connected successfully"
             fi
 
@@ -132,6 +219,7 @@ check_and_act() {
             # Not connected to WiFi
             if [ "$current_state" == "connected" ] || [ "$current_state" == "connected_internet" ]; then
                 log_message "WiFi connection lost"
+                record_transition "wifi_disconnected"
             fi
 
             if has_saved_networks; then
@@ -150,6 +238,16 @@ check_and_act() {
                 if ! is_wifi_connected; then
                     log_message "Auto-reconnect failed after wait, enabling AP mode"
                     set_state "switching_to_ap"
+                    record_transition "switch_to_ap"
+
+                    # Final loop check before switching
+                    if is_looping; then
+                        log_message "Loop detected before AP activation, entering emergency mode"
+                        enter_emergency_mode
+                        release_lock
+                        return
+                    fi
+
                     bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
                 else
                     log_message "Auto-reconnect successful"
@@ -159,6 +257,7 @@ check_and_act() {
                 # No saved networks, enable AP immediately
                 log_message "No saved networks found, enabling AP mode"
                 set_state "switching_to_ap"
+                record_transition "switch_to_ap"
                 bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
             fi
         fi
@@ -208,6 +307,8 @@ cleanup() {
     log_message "WiFi checker stopping"
     release_lock
     rm -f "$STATE_FILE"
+    rm -f "$LOOP_DETECT_FILE"
+    rm -f "${STATE_FILE}.emergency_until"
 }
 
 trap cleanup EXIT INT TERM

@@ -110,11 +110,21 @@ nmcli connection modify "$AP_CONNECTION_NAME" \
     wifi-sec.pairwise ccmp
 
 # Additional settings for stability on Pi 5
+# CRITICAL: Prevent NetworkManager from auto-connecting to AP as a client
 nmcli connection modify "$AP_CONNECTION_NAME" \
     802-11-wireless.powersave disable \
     connection.autoconnect no \
-    connection.autoconnect-priority -100 \
+    connection.autoconnect-priority -999 \
+    connection.autoconnect-slaves no \
     connection.wait-device-timeout 10000
+
+# Verify autoconnect is actually disabled (critical for preventing loops)
+AUTOCONNECT_CHECK=$(nmcli -t -f connection.autoconnect connection show "$AP_CONNECTION_NAME" | cut -d: -f2)
+if [ "$AUTOCONNECT_CHECK" != "no" ]; then
+    echo -e "${RED}ERROR: Failed to disable autoconnect on AP${NC}"
+    echo "Forcing autoconnect off..."
+    nmcli connection modify "$AP_CONNECTION_NAME" connection.autoconnect no
+fi
 
 echo -e "${GREEN}Activating access point...${NC}"
 sleep 1
