@@ -9,12 +9,48 @@ set -euo pipefail
 AP_CONNECTION_NAME="WiFi-Setup-AP"
 SETUP_AP_SCRIPT="/usr/local/bin/setup_ap.sh"
 LOG_TAG="wifi-checker"
-CHECK_INTERVAL=30  # seconds between checks
+CHECK_INTERVAL=60  # seconds between checks (increased for stability)
+LOCK_FILE="/var/lock/wifi-checker.lock"
+STATE_FILE="/var/run/wifi-checker.state"
+
+# Function to acquire lock
+acquire_lock() {
+    local timeout=10
+    local count=0
+    while [ $count -lt $timeout ]; do
+        if mkdir "$LOCK_FILE" 2>/dev/null; then
+            trap 'release_lock' EXIT
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    return 1
+}
+
+# Function to release lock
+release_lock() {
+    rmdir "$LOCK_FILE" 2>/dev/null || true
+}
 
 # Function to log messages
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
     logger -t "$LOG_TAG" "$1"
+}
+
+# Function to get current state
+get_state() {
+    if [ -f "$STATE_FILE" ]; then
+        cat "$STATE_FILE"
+    else
+        echo "unknown"
+    fi
+}
+
+# Function to set current state
+set_state() {
+    echo "$1" > "$STATE_FILE"
 }
 
 # Check if we're connected to any WiFi network (excluding our AP)
@@ -56,66 +92,91 @@ has_internet() {
 
 # Main checking logic
 check_and_act() {
+    # Acquire lock to prevent race conditions
+    if ! acquire_lock; then
+        log_message "Could not acquire lock, skipping this check"
+        return
+    fi
+
+    local current_state=$(get_state)
+
     if is_ap_active; then
         # We're in AP mode - check if user has configured WiFi
+        if [ "$current_state" != "ap_mode" ]; then
+            set_state "ap_mode"
+            log_message "Entered AP mode"
+        fi
+
         if has_saved_networks; then
-            log_message "Saved networks found, attempting to connect..."
-            # Disable AP and try to connect to saved networks
-            nmcli connection down "$AP_CONNECTION_NAME" 2>/dev/null || true
-            sleep 5
-
-            # Wait for auto-connect
-            local retries=6
-            while [ $retries -gt 0 ]; do
-                if is_wifi_connected && has_internet; then
-                    log_message "Successfully connected to WiFi network"
-                    return 0
-                fi
-                sleep 5
-                ((retries--))
-            done
-
-            # Failed to connect, restart AP
-            log_message "Failed to connect to saved networks, restarting AP mode"
-            bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
-        else
-            log_message "AP mode active, waiting for user configuration"
+            log_message "Saved networks found while in AP mode"
+            # Don't immediately try to switch - this causes instability
+            # Wait for user to finish configuration
         fi
     else
         # We're not in AP mode - check if we're connected
-        if ! is_wifi_connected; then
-            log_message "WiFi disconnected, checking for saved networks..."
+        if is_wifi_connected; then
+            # Successfully connected to WiFi
+            if [ "$current_state" != "connected" ]; then
+                set_state "connected"
+                log_message "WiFi connected successfully"
+            fi
+
+            # Verify internet (but don't act on it immediately)
+            if has_internet; then
+                if [ "$current_state" != "connected_internet" ]; then
+                    set_state "connected_internet"
+                    log_message "WiFi connected with internet access"
+                fi
+            fi
+        else
+            # Not connected to WiFi
+            if [ "$current_state" == "connected" ] || [ "$current_state" == "connected_internet" ]; then
+                log_message "WiFi connection lost"
+            fi
 
             if has_saved_networks; then
-                log_message "Waiting for auto-reconnect..."
-                sleep 30
+                # Give NetworkManager time to auto-reconnect
+                log_message "No active WiFi connection, waiting for auto-reconnect..."
+                set_state "reconnecting"
+                release_lock
+                sleep 45  # Longer wait for NetworkManager to try reconnecting
+
+                # Reacquire lock after wait
+                if ! acquire_lock; then
+                    return
+                fi
 
                 # Check again after wait
                 if ! is_wifi_connected; then
-                    log_message "Auto-reconnect failed, enabling AP mode"
+                    log_message "Auto-reconnect failed after wait, enabling AP mode"
+                    set_state "switching_to_ap"
                     bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
+                else
+                    log_message "Auto-reconnect successful"
+                    set_state "connected"
                 fi
             else
-                log_message "No saved networks, enabling AP mode"
+                # No saved networks, enable AP immediately
+                log_message "No saved networks found, enabling AP mode"
+                set_state "switching_to_ap"
                 bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
-            fi
-        else
-            # Connected - verify internet access
-            if has_internet; then
-                log_message "WiFi connected with internet access"
-            else
-                log_message "WiFi connected but no internet access"
             fi
         fi
     fi
+
+    release_lock
 }
 
 # Main execution
 main() {
     log_message "WiFi checker started"
 
-    # Initial check after boot
-    sleep 10
+    # Clean up old lock if exists (in case of unclean shutdown)
+    rmdir "$LOCK_FILE" 2>/dev/null || true
+
+    # Initial wait after boot - give system time to stabilize
+    log_message "Waiting for system to stabilize after boot..."
+    sleep 30
 
     # Check if setup script exists
     if [ ! -f "$SETUP_AP_SCRIPT" ]; then
@@ -126,15 +187,30 @@ main() {
     # Initial state check
     if ! has_saved_networks && ! is_ap_active; then
         log_message "No saved networks and AP not active - enabling AP mode"
-        bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
+        if acquire_lock; then
+            set_state "initial_setup"
+            bash "$SETUP_AP_SCRIPT" 2>&1 | logger -t "$LOG_TAG"
+            release_lock
+        fi
     fi
 
-    # Continuous monitoring loop
+    # Continuous monitoring loop with error handling
     while true; do
-        check_and_act
+        if ! check_and_act; then
+            log_message "Check cycle encountered an error, continuing..."
+        fi
         sleep "$CHECK_INTERVAL"
     done
 }
+
+# Cleanup on exit
+cleanup() {
+    log_message "WiFi checker stopping"
+    release_lock
+    rm -f "$STATE_FILE"
+}
+
+trap cleanup EXIT INT TERM
 
 # Run main function
 main

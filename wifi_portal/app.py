@@ -123,27 +123,47 @@ def configure_wifi():
         if hidden:
             cmd += ' --hidden'
 
-        # Execute configuration
-        code, stdout, stderr = run_command(cmd, timeout=60)
+        # Execute configuration in background to avoid blocking
+        # This prevents the portal from hanging if connection takes time
+        config_script = f'''#!/bin/bash
+# WiFi configuration background process
+LOG_FILE="/var/log/wifi-config.log"
 
-        if code == 0:
-            # Schedule AP shutdown and system operations
-            # Give time for the response to be sent before disconnecting
-            subprocess.Popen([
-                'bash', '-c',
-                'sleep 3 && nmcli connection down "{}" 2>/dev/null || true'.format(AP_CONNECTION_NAME)
-            ])
+echo "$(date): Starting WiFi configuration for {ssid}" >> "$LOG_FILE"
 
-            return jsonify({
-                'success': True,
-                'message': 'WiFi configured successfully! Connecting to network...'
-            })
-        else:
-            error_msg = stderr if stderr else stdout
-            return jsonify({
-                'success': False,
-                'message': f'Configuration failed: {error_msg}'
-            }), 500
+# Run configuration
+{cmd} >> "$LOG_FILE" 2>&1
+
+# Wait for connection to establish (give it 30 seconds)
+sleep 30
+
+# Check if connected
+if nmcli -t -f NAME connection show --active | grep -q "{ssid}"; then
+    echo "$(date): Successfully connected to {ssid}" >> "$LOG_FILE"
+    # Connection successful, we can safely disable AP
+    sleep 5
+    nmcli connection down "{AP_CONNECTION_NAME}" 2>/dev/null || true
+    echo "$(date): AP mode disabled" >> "$LOG_FILE"
+else
+    echo "$(date): Failed to connect to {ssid}, keeping AP active" >> "$LOG_FILE"
+fi
+'''
+
+        # Write script to temp file and execute
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+            f.write(config_script)
+            script_path = f.name
+
+        os.chmod(script_path, 0o755)
+
+        # Start configuration in background
+        subprocess.Popen(['bash', script_path])
+
+        return jsonify({
+            'success': True,
+            'message': 'WiFi configuration started! Please wait 30 seconds, then check if your device connected to the network.'
+        })
 
     except Exception as e:
         return jsonify({

@@ -58,10 +58,31 @@ echo -e "${GREEN}AP Password:${NC}    $AP_PASSWORD"
 echo -e "${GREEN}AP IP:${NC}          $AP_IP"
 echo ""
 
+# Ensure WiFi is enabled
+echo -e "${GREEN}Ensuring WiFi is enabled...${NC}"
+nmcli radio wifi on
+
+# Disconnect any active WiFi connections (not AP)
+echo -e "${GREEN}Disconnecting from WiFi networks...${NC}"
+ACTIVE_WIFI=$(nmcli -t -f NAME,TYPE connection show --active | grep '802-11-wireless' | grep -v "$AP_CONNECTION_NAME" | cut -d: -f1 || true)
+if [ -n "$ACTIVE_WIFI" ]; then
+    while IFS= read -r conn; do
+        echo "  Disconnecting from: $conn"
+        nmcli connection down "$conn" 2>/dev/null || true
+    done <<< "$ACTIVE_WIFI"
+fi
+
+# Make sure interface is ready
+sleep 2
+nmcli device set "$IFACE" managed yes
+
 # Delete existing AP connection if present
 if nmcli -t -f NAME connection show | grep -Fxq "$AP_CONNECTION_NAME"; then
     echo -e "${YELLOW}Removing existing AP connection...${NC}"
+    nmcli connection down "$AP_CONNECTION_NAME" 2>/dev/null || true
+    sleep 1
     nmcli connection delete "$AP_CONNECTION_NAME" 2>/dev/null || true
+    sleep 1
 fi
 
 # Create WiFi hotspot using NetworkManager
@@ -72,27 +93,48 @@ nmcli connection add type wifi ifname "$IFACE" \
     autoconnect no \
     ssid "$AP_SSID"
 
-# Configure as an Access Point
+# Configure as an Access Point with stability settings
 nmcli connection modify "$AP_CONNECTION_NAME" \
     802-11-wireless.mode ap \
     802-11-wireless.band bg \
+    802-11-wireless.channel 6 \
     ipv4.method shared \
-    ipv4.addresses "$AP_IP/24"
+    ipv4.addresses "$AP_IP/24" \
+    ipv4.dhcp-hostname "wifisetup"
 
 # Set WPA2-PSK security
 nmcli connection modify "$AP_CONNECTION_NAME" \
     wifi-sec.key-mgmt wpa-psk \
-    wifi-sec.psk "$AP_PASSWORD"
+    wifi-sec.psk "$AP_PASSWORD" \
+    wifi-sec.proto rsn \
+    wifi-sec.pairwise ccmp
 
 # Additional settings for stability on Pi 5
 nmcli connection modify "$AP_CONNECTION_NAME" \
     802-11-wireless.powersave disable \
-    connection.autoconnect-priority -100
+    connection.autoconnect no \
+    connection.autoconnect-priority -100 \
+    connection.wait-device-timeout 10000
 
 echo -e "${GREEN}Activating access point...${NC}"
+sleep 1
 
-# Bring up the AP
-if nmcli connection up "$AP_CONNECTION_NAME" 2>/dev/null; then
+# Bring up the AP with retry logic
+MAX_RETRIES=3
+RETRY=0
+while [ $RETRY -lt $MAX_RETRIES ]; do
+    if nmcli connection up "$AP_CONNECTION_NAME" 2>/dev/null; then
+        break
+    fi
+    RETRY=$((RETRY + 1))
+    if [ $RETRY -lt $MAX_RETRIES ]; then
+        echo -e "${YELLOW}Retry $RETRY/$MAX_RETRIES...${NC}"
+        sleep 2
+    fi
+done
+
+# Check if AP is actually active
+if nmcli -t -f NAME connection show --active | grep -Fxq "$AP_CONNECTION_NAME"; then
     echo ""
     echo -e "${GREEN}===== Access Point Active! =====${NC}"
     echo ""

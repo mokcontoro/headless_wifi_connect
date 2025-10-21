@@ -8,13 +8,18 @@ Wants=NetworkManager.service wifi-portal.service
 Type=simple
 User=root
 ExecStart=/bin/bash /usr/local/bin/check_wifi.sh
-Restart=always
-RestartSec=10
+Restart=on-failure
+RestartSec=30
+StartLimitBurst=5
+StartLimitIntervalSec=300
 StandardOutput=journal
 StandardError=journal
 
 # Security
 NoNewPrivileges=false
+
+# Prevent service from interfering during network changes
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
