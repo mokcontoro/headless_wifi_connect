@@ -81,31 +81,36 @@ systemctl start NetworkManager
 echo "  ✓ NetworkManager enabled"
 
 echo ""
-echo -e "${BLUE}[2/7] Adding Comitup repository...${NC}"
-
-# Download and install Comitup apt source
-echo "  Downloading Comitup repository package..."
-wget -q https://davesteele.github.io/comitup/latest/davesteele-comitup-apt-source_latest.deb \
-    -O /tmp/comitup-apt-source.deb
-
-echo "  Installing repository package..."
-dpkg -i --force-all /tmp/comitup-apt-source.deb
-rm /tmp/comitup-apt-source.deb
-
-echo "  ✓ Comitup repository added"
-
-echo ""
-echo -e "${BLUE}[3/7] Updating package lists...${NC}"
+echo -e "${BLUE}[2/7] Updating package lists...${NC}"
 apt-get update
 
 echo ""
-echo -e "${BLUE}[4/7] Installing Comitup...${NC}"
-apt-get install -y comitup
+echo -e "${BLUE}[3/7] Installing Comitup...${NC}"
+echo "  Installing from Debian repositories..."
+
+# Comitup is available in Debian Bookworm/Trixie repositories
+# For older versions or if not available, we'll try the PPA
+if apt-cache show comitup &>/dev/null; then
+    echo "  ✓ Comitup found in repositories"
+    apt-get install -y comitup
+else
+    echo "  Comitup not in standard repos, adding Comitup PPA..."
+
+    # Add Comitup repository manually
+    echo "deb http://davesteele.github.io/comitup/repo comitup main" > /etc/apt/sources.list.d/comitup.list
+
+    # Add GPG key (without --no-check-certificate for security)
+    wget -qO - http://davesteele.github.io/comitup/repo/davesteele-comitup.gpg.key | apt-key add - 2>/dev/null || true
+
+    # Update and install
+    apt-get update
+    apt-get install -y comitup
+fi
 
 echo "  ✓ Comitup installed"
 
 echo ""
-echo -e "${BLUE}[5/7] Configuring Comitup...${NC}"
+echo -e "${BLUE}[4/7] Configuring Comitup...${NC}"
 
 # Configure Comitup with custom SSID prefix
 COMITUP_CONF="/etc/comitup.conf"
@@ -131,7 +136,7 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}[6/7] Enabling Comitup service...${NC}"
+echo -e "${BLUE}[5/7] Enabling Comitup service...${NC}"
 
 # Enable and start comitup
 systemctl enable comitup
@@ -145,6 +150,33 @@ if systemctl is-active --quiet comitup; then
 else
     echo -e "  ${RED}✗ Comitup service failed to start${NC}"
     echo "  Check logs with: sudo journalctl -u comitup -n 50"
+fi
+
+echo ""
+echo -e "${BLUE}[6/7] Disabling conflicting services...${NC}"
+
+# Disable services that conflict with Comitup
+echo "  Disabling services that may conflict..."
+
+# Mask systemd-resolved if it exists (conflicts with dnsmasq)
+if systemctl list-unit-files | grep -q systemd-resolved; then
+    systemctl disable systemd-resolved 2>/dev/null || true
+    systemctl mask systemd-resolved 2>/dev/null || true
+    echo "  ✓ Disabled systemd-resolved"
+fi
+
+# Disable dhcpcd if it exists
+if systemctl list-unit-files | grep -q dhcpcd; then
+    systemctl disable dhcpcd 2>/dev/null || true
+    systemctl mask dhcpcd 2>/dev/null || true
+    echo "  ✓ Disabled dhcpcd"
+fi
+
+# Disable wpa_supplicant if running standalone
+if systemctl is-active --quiet wpa_supplicant; then
+    systemctl disable wpa_supplicant 2>/dev/null || true
+    systemctl mask wpa_supplicant 2>/dev/null || true
+    echo "  ✓ Disabled wpa_supplicant"
 fi
 
 echo ""

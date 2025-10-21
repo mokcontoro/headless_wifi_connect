@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git log:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd complete headless WiFi configuration system for Raspberry Pi 5 Bookworm\n\nImplemented a comprehensive WiFi Access Point + Captive Portal solution for headless WiFi setup on Raspberry Pi 5 running Bookworm OS.\n\nFeatures:\n- Automatic AP mode on first boot or WiFi failure\n- Beautiful responsive web portal with network scanning\n- Flask backend with NetworkManager integration\n- Support for hidden networks and network priorities\n- Automatic captive portal detection\n- Systemd services for auto-start and monitoring\n- Complete documentation and testing guides\n\nComponents:\n- WiFi portal web application (Flask + HTML/CSS/JS)\n- AP mode setup script with unique SSID generation\n- WiFi connection monitor and auto-fallback\n- NetworkManager-based WiFi configuration script\n- Installation and uninstallation scripts\n- Systemd service files\n- Comprehensive documentation (README, Setup Guide, User Guide, Testing Checklist)\n\nCompatible with Raspberry Pi 5 Bookworm OS using NetworkManager.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nUpdate WiFi AP credentials - change SSID and password\n\nChanged AP network name from \"RaspiCam-Setup\" to \"wifi_connect_cam\"\nChanged AP password from \"raspberrypi\" to \"smartcam\"\n\nUpdated in:\n- setup_ap.sh (main configuration)\n- README.md\n- SETUP_GUIDE.md\n- USER_GUIDE.md\n- TESTING_CHECKLIST.md\n- wifi_portal/templates/index.html\n\nThis provides a more descriptive network name and secure password for the camera device setup.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)",
+      "WebSearch",
+      "WebFetch(domain:davesteele.github.io)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []
