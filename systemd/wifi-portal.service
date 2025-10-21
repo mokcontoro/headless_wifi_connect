@@ -1,0 +1,25 @@
+[Unit]
+Description=WiFi Configuration Portal
+Documentation=https://github.com/mokcontoro/headless_wifi_connect
+After=network.target NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/headless_wifi_connect/wifi_portal
+ExecStart=/usr/bin/python3 /opt/headless_wifi_connect/wifi_portal/app.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=false
+PrivateTmp=true
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target

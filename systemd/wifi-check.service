@@ -1,0 +1,20 @@
+[Unit]
+Description=WiFi Connection Monitor
+Documentation=https://github.com/mokcontoro/headless_wifi_connect
+After=network.target NetworkManager.service wifi-portal.service
+Wants=NetworkManager.service wifi-portal.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /usr/local/bin/check_wifi.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
