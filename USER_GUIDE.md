@@ -13,9 +13,9 @@ Connect the power supply to your RaspiCam. The device will take about 30-60 seco
 ### 2. Connect to Setup Network
 On your phone or computer:
 1. Open WiFi settings
-2. Look for a network named **`RaspiCam-Setup-XXXX`**
+2. Look for a network named **`wifi_connect_cam-XXXX`**
    - (XXXX will be 4 unique characters)
-3. Connect using password: **`raspberrypi`**
+3. Connect using password: **`smartcam`**
 
 ### 3. Configure WiFi
 Once connected:
@@ -46,7 +46,7 @@ After setup, find your camera at:
 - Try restarting the device
 
 ### Can't connect to setup network
-- Make sure you're using password: `raspberrypi`
+- Make sure you're using password: `smartcam`
 - Try forgetting the network and connecting again
 - Move closer to the device
 
@@ -84,8 +84,8 @@ To connect to a different WiFi network:
 
 ## Technical Specifications
 
-- **Setup Network Name:** RaspiCam-Setup-XXXX
-- **Setup Password:** raspberrypi
+- **Setup Network Name:** wifi_connect_cam-XXXX
+- **Setup Password:** smartcam
 - **Setup IP Address:** 192.168.4.1
 - **WiFi Standards:** 802.11b/g/n/ac
 - **Security:** WPA2-PSK

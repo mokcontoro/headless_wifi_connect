@@ -74,8 +74,8 @@ After installation completes:
 2. **Wait 30-60 seconds** for the system to boot and create the hotspot
 
 3. **Look for the WiFi network** on your phone/laptop:
-   - Network name: `RaspiCam-Setup-XXXX` (XXXX = last 4 chars of MAC address)
-   - Password: `raspberrypi`
+   - Network name: `wifi_connect_cam-XXXX` (XXXX = last 4 chars of MAC address)
+   - Password: `smartcam`
 
 4. **Connect** to this network
 
@@ -138,16 +138,16 @@ After the Pi connects to your WiFi:
 3. **User Instructions Card:**
    Include a simple instruction card with each device:
    ```
-   📷 RaspiCam Setup
+   📷 Camera Setup
 
    1. Power on the device
    2. Wait 1 minute
-   3. Connect to WiFi: "RaspiCam-Setup-XXXX"
-      Password: raspberrypi
+   3. Connect to WiFi: "wifi_connect_cam-XXXX"
+      Password: smartcam
    4. Follow on-screen instructions
    5. Done! Your camera is ready.
 
-   Support: support@yourcompany.com
+   Support: https://github.com/mokcontoro/headless_wifi_connect
    ```
 
 ### Package Contents

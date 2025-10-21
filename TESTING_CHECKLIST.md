@@ -36,8 +36,8 @@ sudo systemctl status wifi-check
 
 1. [ ] Reboot the Raspberry Pi: `sudo reboot`
 2. [ ] Wait 60 seconds
-3. [ ] AP network appears: `RaspiCam-Setup-XXXX`
-4. [ ] Can connect to AP with password `raspberrypi`
+3. [ ] AP network appears: `wifi_connect_cam-XXXX`
+4. [ ] Can connect to AP with password `smartcam`
 5. [ ] Device gets IP address (should be 192.168.4.x)
 6. [ ] Portal loads at http://192.168.4.1
 7. [ ] Network scan shows available WiFi networks

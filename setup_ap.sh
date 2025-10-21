@@ -12,8 +12,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-AP_SSID_PREFIX="RaspiCam-Setup"
-AP_PASSWORD="raspberrypi"
+AP_SSID_PREFIX="wifi_connect_cam"
+AP_PASSWORD="smartcam"
 AP_IP="192.168.4.1"
 AP_CONNECTION_NAME="WiFi-Setup-AP"
 
